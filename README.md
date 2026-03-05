@@ -240,22 +240,110 @@ dm-plan-review                    dm-code-review
 ## 🚀 安装与使用
 
 ### 前提条件
-- Claude Code 或兼容的 AI 编程助手
-- Codex 访问权限（用于双重审阅）
-- Superpowers 框架（推荐安装）
 
-### 安装步骤
-1. 将 `My_skills/` 目录复制到你的技能目录
-2. 在 Claude Code 中加载技能
-3. 开始使用 `/dm-plan-review` 和 `/dm-code-review`
+| 条件 | 说明 | 必需 |
+|------|------|------|
+| **Claude Code** | 或兼容的 AI 编程助手 | ✅ 必需 |
+| **Codex 访问权限** | 用于双重审阅 | ✅ 必需 |
+| **Codex MCP** | 通过 MCP 接入 Codex（仅 dm-plan-review 需要） | ✅ 必需 |
+| **Superpowers 框架** | 技能基于 Superpowers 增强 | ⭐ 推荐 |
+
+### ⚙️ Codex MCP 配置（关键步骤）
+
+**dm-plan-review 需要通过 Codex MCP 调用 Codex 进行审阅。**
+
+> **注意**：
+> 1. Codex MCP **不需要配置 API Key**，它使用 Claude 已认证的 Codex 会话
+> 2. **dm-code-review 不自动调用 Codex MCP**，采用用户手动触发审阅（见注意事项）
+
+#### 步骤 1：安装 Codex
+
+```bash
+# 使用 npm 全局安装
+npm install -g @openai/codex
+
+# 或使用 yarn
+yarn global add @openai/codex
+```
+
+#### 步骤 2：配置 MCP Server
+
+在你的全局 MCP 配置文件 `~/.claude.json` 或项目级的 `.claude/mcp.json` 中添加：
+
+```json
+{
+  "mcpServers": {
+    "codex-reviewer": {
+      "command": "codex",
+      "args": ["mcp-server"],
+      "type": "stdio"
+    }
+  }
+}
+```
+
+**可选参数（指定模型）：**
+```json
+{
+  "mcpServers": {
+    "codex-reviewer": {
+      "command": "codex",
+      "args": ["-m", "gpt-5", "mcp-server"],
+      "type": "stdio"
+    }
+  }
+}
+```
+
+#### 步骤 3：验证配置
+
+重启 Claude Code 后，在对话框中输入 `/` 查看可用的 MCP 命令，确认 `codex` 相关命令已加载。
+
+**参考官方文档：**
+- [Codex Agents SDK 官方文档](https://developers.openai.com/codex/guides/agents-sdk)
+
+---
+
+### 📥 安装步骤
+
+1. **克隆或下载技能文件**
+   ```bash
+   git clone https://github.com/ddong0417lin-prog/My_skills.git
+   ```
+
+2. **将技能文件复制到你的技能目录**
+   ```bash
+   cp -r My_skills/dm-plan-review ~/.claude/skills/
+   cp -r My_skills/dm-code-review ~/.claude/skills/
+   ```
+
+3. **重启 Claude Code，技能自动加载**
+
+4. **验证技能可用**
+   ```
+   /dm-plan-review --help
+   /dm-code-review --help
+   ```
+
+---
 
 ### 推荐工作流
+
 ```
-1. /dm-plan-review 需求描述  →  生成 PRD 和 Plan
-2. 审阅并确认 Plan
-3. /dm-code-review  →  开始实现
-4. 按阶段执行，每阶段完成后手动触发 Codex 审阅
-5. 所有阶段完成，项目交付
+1. 配置并启动 Codex MCP
+   └─ 在 ~/.claude.json 中添加 codex-reviewer 配置
+
+2. /dm-plan-review 需求描述
+   └─ 生成 PRD 和 Plan（自动调用 Codex MCP 审阅）
+
+3. 审阅并确认 Plan
+
+4. /dm-code-review
+   └─ 开始实现
+
+5. 按阶段执行，每阶段完成后**手动**让 Codex 审阅代码变更
+
+6. 所有阶段完成，项目交付
 ```
 
 ---
@@ -264,7 +352,7 @@ dm-plan-review                    dm-code-review
 
 ### PRD 文档 (prd.md)
 - 项目概述
-- 功能需求（P0/P1/P2优先级）
+- 功能需求（P0/P1/P2 优先级）
 - 非功能性需求
 - 数据需求
 - 技术方案
@@ -289,8 +377,41 @@ dm-plan-review                    dm-code-review
 1. **PRD 是 Plan 的基础** - 必须先完成 PRD 审阅
 2. **TDD 强制约束** - 所有子任务必须遵循 RED-GREEN-REFACTOR 流程
 3. **阶段统一提交** - 一个阶段一个 commit，保持历史清晰
-4. **用户手动审阅** - Codex 审阅需用户手动触发，主 Agent 不自动调用
+4. **用户手动审阅** - dm-code-review 阶段需用户手动让 Codex 审阅代码
 5. **任务间审查** - 每个子任务完成后执行自我审查
+6. **Codex MCP 必须先配置** - 在 ~/.claude.json 中添加 codex-reviewer 配置
+
+---
+
+### 为什么 dm-code-review 采用用户手动审阅？
+
+当代码变更较多（git diff 太长）时，使用 MCP 自动调用 Codex 可能会出现**长时间无响应**的情况。
+
+**可能的原因：**
+
+| 可能原因 | 说明 |
+|----------|------|
+| **Claude Code agent loop 卡顿** | 上下文过长导致 AI 处理缓慢 |
+| **Codex MCP server 宕机** | 大量数据导致 MCP 服务崩溃 |
+| **通信超时** | 两者之间的数据传输超时 |
+
+**采用用户手动触发审阅的好处：**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  ✅ 明确知道审阅是否在进行中                            │
+│  ✅ 可以随时中断或重试                                  │
+│  ✅ 避免自动调用导致的不可控状态                        │
+│  ✅ 用户可以看到完整的 git diff 后再决定如何审阅          │
+└─────────────────────────────────────────────────────────┘
+```
+
+**推荐做法：**
+```bash
+# 阶段完成后，用户手动执行
+git show HEAD  # 查看完整变更
+# 然后让 Codex 审阅
+```
 
 ---
 
@@ -298,6 +419,7 @@ dm-plan-review                    dm-code-review
 
 - [Superpowers GitHub](https://github.com/obra/superpowers)
 - [Superpowers for Claude Code](https://blog.fsck.com/2025/10/09/superpowers/)
+- [Codex Agents SDK 官方文档](https://developers.openai.com/codex/guides/agents-sdk)
 
 ---
 
